@@ -1,0 +1,112 @@
+1. 概要
+本分析では、売上データをもとに顧客の購買行動を分析し、
+購買頻度の違いや商品ごとの特徴を明らかにすることを目的とする。
+
+2. 使用データ
+本分析では以下のデータを使用した
+
+customer_id（顧客ID）
+product_id（商品ID）
+order_date（購入日）
+quantity（購入数量）
+sales_amount（売上金額）
+
+3. 分析内容
+3.1 購入間隔分析
+顧客ごとの購入間隔（日数）を算出し、リピート速度を分析
+df_sorted = df.sort_values(["customer_id", "order_date"])
+
+df_sorted["purchase_order"] = (
+    df_sorted.groupby("customer_id").cumcount() + 1
+)
+
+repeat_df = df_sorted[df_sorted["purchase_order"] >= 2].copy()
+
+repeat_df["repeat_interval_days"] = (
+    repeat_df["order_date"]
+    - repeat_df.groupby("customer_id")["order_date"].shift(1)
+).dt.days
+
+3.2 高頻度顧客分析
+購買回数に基づき高頻度顧客を分類
+customer_summary = (
+    df.groupby("customer_id")
+    .agg(purchase_count=("order_id", "count"))
+    .reset_index()
+)
+
+threshold = customer_summary["purchase_count"].quantile(0.7)
+
+customer_summary["high_frequency_flg"] = (
+    customer_summary["purchase_count"] >= threshold
+)
+3.3 購入間隔の比較
+repeat_summary = (
+    repeat_df
+    .dropna(subset=["repeat_interval_days"])
+    .groupby("customer_id")
+    .agg(avg_repeat_interval_days=("repeat_interval_days", "mean"))
+    .reset_index()
+)
+
+repeat_merged = pd.merge(
+    customer_summary,
+    repeat_summary,
+    on="customer_id",
+    how="left"
+)
+
+repeat_compare = (
+    repeat_merged
+    .groupby("high_frequency_flg")
+    .agg(avg_repeat_interval_days=("avg_repeat_interval_days", "mean"))
+    .reset_index()
+)
+4. 分析結果
+4.1 購入間隔
+
+高頻度顧客の方が購入間隔が短い
+平均・中央値ともに同傾向
+
+4.2 分布
+
+高頻度顧客は常に短い間隔側に位置
+非高頻度顧客は間隔が長い傾向
+
+⇒ 購買頻度の違いは購入間隔の違いによる可能性
+
+4.3 商品別分析
+df.groupby("product_id").agg(
+    total_sales=("sales_amount", "sum"),
+    avg_quantity=("quantity", "mean")
+)
+``
+P002：売上主力
+P003：まとめ買い型
+P001：リピート型
+
+4.4 顧客 × 商品分析
+df.groupby(["customer_id", "product_id"]).agg(
+    total_sales=("sales_amount", "sum")
+)
+⇒顧客ごとに購入商品が偏る
+
+4.5 高頻度顧客が買う商品
+pd.merge(customer_summary, df, on="customer_id") \
+    .groupby(["high_frequency_flg", "product_id"]) \
+    .agg(total_sales=("sales_amount", "sum"))
+⇒高頻度顧客は特定商品（P001）に集中
+
+5. 考察
+本分析から以下が示唆される
+
+高頻度顧客は購入間隔が短い
+商品によって顧客の定着度が異なる
+顧客ごとに購買パターンが明確に分かれる
+
+
+6. ビジネス示唆
+
+リピートされやすい商品（P001）を軸に施策設計
+初回購入商品が顧客定着に影響する可能性
+顧客タイプごとの施策最適化が必要
